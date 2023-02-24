@@ -47,15 +47,26 @@ node . wallet send <address> <optional amount>
 
 ## Minting
 
+From file:
+
 ```
-node . mint <address> <content type> <hex data OR filename>
+node . mint <address> <path>
 ```
 
-Example:
+From data:
+
+```
+node . mint <address> <content type> <hex data>
+```
+
+Examples:
+
+```
+node . mint DSV12KPb8m5b6YtfmqY89K6YqvdVwMYDPn dog.jpeg
+```
 
 ```
 node . mint DSV12KPb8m5b6YtfmqY89K6YqvdVwMYDPn "text/plain;charset=utf8" 576f6f6621 
-node . mint DSV12KPb8m5b6YtfmqY89K6YqvdVwMYDPn dog.jpeg
 ```
 
 ## Protocol
