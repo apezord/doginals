@@ -207,9 +207,9 @@ function bufferToChunk(b, type) {
 
 function numberToChunk(n) {
     return {
-        buf: n <= 16 ? undefined : n < 256 ? Buffer.from([n]) : Buffer.from([n / 256, n % 256]),
-        len: n <= 16 ? 0 : n <= 255 ? 1 : 2,
-        opcodenum: n == 0 ? 0 : n <= 16 ? 80 + n : n <= 255 ? 1 : 2
+        buf: n <= 16 ? undefined : n < 128 ? Buffer.from([n]) : Buffer.from([n / 256, n % 256]),
+        len: n <= 16 ? 0 : n < 128 ? 1 : 2,
+        opcodenum: n == 0 ? 0 : n <= 16 ? 80 + n : n < 128 ? 1 : 2
     }
 }
 
@@ -280,6 +280,7 @@ function inscribe(wallet, address, contentType, data) {
         lock.chunks.push(opcodeToChunk(Opcode.OP_TRUE))
 
 
+
         let lockhash = Hash.ripemd160(Hash.sha256(lock.toBuffer()))
 
 
@@ -310,6 +311,7 @@ function inscribe(wallet, address, contentType, data) {
             unlock.chunks.push(bufferToChunk(lastLock.toBuffer()))
             tx.inputs[0].setScript(unlock)
         }
+
 
         updateWallet(wallet, tx)
         txs.push(tx)
