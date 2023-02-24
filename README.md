@@ -85,4 +85,55 @@ http://localhost:3000/tx/15f3b73df7e5c072becb1d84191843ba080734805addfccb6509297
 
 ## Protocol
 
-todo
+The doginals protocol allows any size data to be inscribed onto subwoofers.
+
+An inscription is defined as a series of push datas:
+
+```
+"ord"
+OP_1
+"text/plain; charset=utf8"
+OP_0
+"Woof!"
+```
+
+For doginals, we introduce a couple extensions. First, content may spread across multiple parts:
+
+```
+"ord"
+OP_2
+"text/plain; charset=utf8"
+OP_1
+"Woof and "
+OP_0
+"woof woof!"
+```
+
+This content here would be concatenated as "Woof and woof woof!". This allows up to ~1500 bytes of data per transaction.
+
+Second, P2SH is used to encode inscriptions.
+
+There are no restrictions on what P2SH scripts may do as long as the redeem scripts start with inscription push datas.
+
+And third, inscriptions are allowed to chain across transactions:
+
+Transaction 1:
+
+```
+"ord"
+OP_2
+"text/plain; charset=utf8"
+OP_1
+"Woof and "
+```
+
+Transaction 2
+
+```
+OP_0
+"woof woof!"
+```
+
+With the restriction that each inscription part after the first must start with a number separator, and number separators must count down to 0.
+
+This allows indexers to know how much data remains.
