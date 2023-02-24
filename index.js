@@ -185,19 +185,7 @@ async function mint() {
 
         let tx = txs[i]
 
-        while (true) {
-            try {
-                await broadcast(tx)
-                break
-            } catch (e) {
-                if (e.response.data.error.message.includes('too-long-mempool-chain')) {
-                    console.warn('retrying, too-long-mempool-chain')
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                } else {
-                    throw e
-                }
-            }
-        }
+        await broadcast(tx)
     }
 
     console.log(txs[txs.length - 1].hash)
@@ -454,7 +442,20 @@ async function broadcast(tx) {
         }
     }
 
-    await axios.post(process.env.NODE_RPC_URL, body, options)
+    while (true) {
+        try {
+            await axios.post(process.env.NODE_RPC_URL, body, options)
+            break
+        } catch (e) {
+            let msg = e.response && e.response.data && e.response.data.error && e.response.data.error.message
+            if (msg.includes('too-long-mempool-chain')) {
+                console.warn('retrying, too-long-mempool-chain')
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } else {
+                throw e
+            }
+        }
+    }
 
     let wallet = JSON.parse(fs.readFileSync('.wallet.json'))
 
