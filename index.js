@@ -53,9 +53,12 @@ async function wallet() {
 
 function walletNew() {
     if (!fs.existsSync('.wallet.json')) {
-        const privkey = new PrivateKey().toWIF()
-        const json = { privkey, utxos: [] }
+        const privateKey = new PrivateKey()
+        const privkey = privateKey.toWIF()
+        const address = privateKey.toAddress().toString()
+        const json = { privkey, address, utxos: [] }
         fs.writeFileSync('.wallet.json', JSON.stringify(json, 0, 2))
+        console.log('address', address)
     } else {
         throw new Error('wallet already exists')
     }
