@@ -492,7 +492,7 @@ async function extract(txid) {
 
 function server() {
     const app = express()
-    const port = 3000
+    const port = process.env.SERVER_PORT ? parseInt(process.env.SERVER_PORT) : 3000
 
     app.get('/tx/:txid', (req, res) => {
         extract(req.params.txid).then(result => {
