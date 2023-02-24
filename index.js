@@ -184,16 +184,13 @@ async function mint() {
 
     let wallet = JSON.parse(fs.readFileSync('.wallet.json'))
 
-
-    let txs = inscribeOrd(wallet, address, contentType, data)
-
+    let txs = inscribe(wallet, address, contentType, data)
 
     for (let i = 0; i < txs.length; i++) {
         console.log(`broadcasting tx ${i + 1} of ${txs.length}`)
 
         await broadcast(txs[i])
     }
-
 
     console.log(txs[txs.length - 1].hash)
 }
@@ -224,7 +221,7 @@ function opcodeToChunk(op) {
 const MAX_CHUNK_LEN = 240
 
 
-function inscribeOrd(wallet, address, contentType, data) {
+function inscribe(wallet, address, contentType, data) {
     let txs = []
 
 
@@ -406,16 +403,21 @@ function server() {
         axios.get(`https://dogechain.info/api/v1/transaction/${req.params.txid}`)
             .then(resp => {
                 let script = Script.fromHex(resp.data.transaction.inputs[0].scriptSig.hex)
+
                 let prefix = script.chunks[0].buf.toString('utf8')
                 if (prefix != 'ord') {
                     res.send('not an doginal')
                 }
+
                 let pieces = script.chunks[1].opcodenum - 80
+
                 let contentType = script.chunks[2].buf.toString('utf8')
+
                 let data = Buffer.alloc(0)
                 for (let i = 0; i < pieces; i++) {
                     data = Buffer.concat([data, script.chunks[4 + 2 * i].buf])
                 }
+
                 res.setHeader('content-type', contentType)
                 res.send(data)
             })
