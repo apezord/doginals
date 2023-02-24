@@ -3,6 +3,7 @@ const axios = require('axios')
 const fs = require('fs')
 const dotenv = require('dotenv')
 const mime = require('mime-types')
+const express = require('express')
 const { PrivateKey, Address, Transaction, Script, Opcode } = dogecore
 const { Hash, Signature } = dogecore.crypto
 
@@ -26,6 +27,8 @@ async function main() {
         await mint()
     } else if (cmd == 'wallet') {
         await wallet()
+    } else if (cmd == 'server') {
+        await server()
     } else {
         throw new Error('unknown command')
     }
@@ -388,6 +391,39 @@ async function broadcast(tx) {
     updateWallet(wallet, tx)
 
     fs.writeFileSync('.wallet.json', JSON.stringify(wallet, 0, 2))
+}
+
+
+function server() {
+    const app = express()
+    const port = 3000
+
+    app.get('/tx/:txid', (req, res) => {
+        axios.get(`https://dogechain.info/api/v1/transaction/${req.params.txid}`)
+            .then(resp => {
+                let script = Script.fromHex(resp.data.transaction.inputs[0].scriptSig.hex)
+                let prefix = script.chunks[0].buf.toString('utf8')
+                if (prefix != 'ord') {
+                    res.send('not an doginal')
+                }
+                let pieces = script.chunks[1].opcodenum - 80
+                let contentType = script.chunks[2].buf.toString('utf8')
+                let data = Buffer.alloc(0)
+                for (let i = 0; i < pieces; i++) {
+                    data = Buffer.concat([data, script.chunks[4 + 2 * i].buf])
+                }
+                res.setHeader('content-type', contentType)
+                res.send(data)
+            })
+            .catch(e => res.send(e.message))
+    })
+
+    app.listen(port, () => {
+        console.log(`Listening on port ${port}`)
+        console.log()
+        console.log(`Example:`)
+        console.log(`http://localhost:${port}/tx/15f3b73df7e5c072becb1d84191843ba080734805addfccb650929719080f62e`)
+    })
 }
 
 
