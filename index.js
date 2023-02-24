@@ -207,7 +207,7 @@ function bufferToChunk(b, type) {
 
 function numberToChunk(n) {
     return {
-        buf: n <= 16 ? undefined : n < 128 ? Buffer.from([n]) : Buffer.from([n / 256, n % 256]),
+        buf: n <= 16 ? undefined : n < 128 ? Buffer.from([n]) : Buffer.from([n % 256, n / 256]),
         len: n <= 16 ? 0 : n < 128 ? 1 : 2,
         opcodenum: n == 0 ? 0 : n <= 16 ? 80 + n : n < 128 ? 1 : 2
     }
@@ -438,33 +438,67 @@ async function broadcast(tx) {
 }
 
 
+function chunkToNumber(chunk) {
+    if (chunk.opcodenum == 0) return 0
+    if (chunk.opcodenum == 1) return chunk.buf[0]
+    if (chunk.opcodenum == 2) return chunk.buf[1] * 255 + chunk.buf[0]
+    if (chunk.opcodenum > 80 && chunk.opcodenum <= 96) return chunk.opcodenum - 80
+    return undefined
+}
+
+
+async function extract(txid) {
+    let resp = await axios.get(`https://dogechain.info/api/v1/transaction/${txid}`)
+    let transaction = resp.data.transaction
+    let script = Script.fromHex(transaction.inputs[0].scriptSig.hex)
+    let chunks = script.chunks
+
+
+    let prefix = chunks.shift().buf.toString('utf8')
+    if (prefix != 'ord') {
+        res.send('not an doginal')
+    }
+
+    let pieces = chunkToNumber(chunks.shift())
+
+    let contentType = chunks.shift().buf.toString('utf8')
+
+
+    let data = Buffer.alloc(0)
+    let remaining = pieces
+
+    while (remaining && chunks.length) {
+        let n = chunkToNumber(chunks.shift())
+
+        if (n !== remaining - 1) {
+            txid = transaction.outputs[0].spent.hash
+            resp = await axios.get(`https://dogechain.info/api/v1/transaction/${txid}`)
+            transaction = resp.data.transaction
+            script = Script.fromHex(transaction.inputs[0].scriptSig.hex)
+            chunks = script.chunks
+            continue
+        }
+
+        data = Buffer.concat([data, chunks.shift().buf])
+        remaining -= 1
+    }
+
+    return {
+        contentType,
+        data
+    }
+}
+
+
 function server() {
     const app = express()
     const port = 3000
 
     app.get('/tx/:txid', (req, res) => {
-        axios.get(`https://dogechain.info/api/v1/transaction/${req.params.txid}`)
-            .then(resp => {
-                let script = Script.fromHex(resp.data.transaction.inputs[0].scriptSig.hex)
-
-                let prefix = script.chunks[0].buf.toString('utf8')
-                if (prefix != 'ord') {
-                    res.send('not an doginal')
-                }
-
-                let pieces = script.chunks[1].opcodenum - 80
-
-                let contentType = script.chunks[2].buf.toString('utf8')
-
-                let data = Buffer.alloc(0)
-                for (let i = 0; i < pieces; i++) {
-                    data = Buffer.concat([data, script.chunks[4 + 2 * i].buf])
-                }
-
-                res.setHeader('content-type', contentType)
-                res.send(data)
-            })
-            .catch(e => res.send(e.message))
+        extract(req.params.txid).then(result => {
+            res.setHeader('content-type', result.contentType)
+            res.send(result.data)
+        }).catch(e => res.send(e.message))
     })
 
     app.listen(port, () => {
