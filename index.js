@@ -3,7 +3,7 @@ const axios = require('axios')
 const fs = require('fs')
 const dotenv = require('dotenv')
 const mime = require('mime-types')
-const { PrivateKey, Address, Transaction, Script } = dogecore
+const { PrivateKey, Address, Transaction, Script, Opcode } = dogecore
 const { Hash, Signature } = dogecore.crypto
 
 dotenv.config()
@@ -156,6 +156,7 @@ async function mint() {
     const argContentTypeOrFilename = process.argv[4]
     const argHexData = process.argv[5]
 
+
     let address = new Address(argAddress)
     let contentType
     let data
@@ -176,7 +177,8 @@ async function mint() {
 
     let wallet = JSON.parse(fs.readFileSync('.wallet.json'))
 
-    if (data.length < MAX_SCRIPT_ELEMENT_SIZE) {
+
+    if (data.length <= MAX_SCRIPT_ELEMENT_SIZE) {
         txs = inscribeOrd(wallet, address, contentType, data)
     } else {
         txs = inscribeOrdChain(wallet, address, contentType, data)
@@ -195,31 +197,83 @@ async function mint() {
 }
 
 
+function bufferToChunk(b, type) {
+    b = Buffer.from(b, type)
+    return {
+        buf: b.length ? b : undefined,
+        len: b.length,
+        opcodenum: b.length <= 75 ? b.length : b.length <= 255 ? 76 : 77
+    }
+}
+
+function numberToChunk(n) {
+    return {
+        buf: n <= 16 ? undefined : n < 256 ? Buffer.from([n]) : Buffer.from([n / 256, n % 256]),
+        len: n <= 16 ? 0 : n <= 255 ? 1 : 2,
+        opcodenum: n == 0 ? 0 : n <= 16 ? 80 + n : n <= 255 ? 1 : 2
+    }
+}
+
+function opcodeToChunk(op) {
+    return { opcodenum: op }
+}
+
+
 function inscribeOrd(wallet, address, contentType, data) {
     let txs = []
 
 
-    let prefixHex = Buffer.from('ord').toString('hex')
-    let contentTypeHex = Buffer.from(contentType).toString('hex')
-    let inner = `${prefixHex} OP_1 ${contentTypeHex} OP_0 ${data.toString('hex')}`
+    let privateKey = new PrivateKey(wallet.privkey)
+    let publicKey = privateKey.toPublicKey()
 
-    let pubkey = new PrivateKey(wallet.privkey).toPublicKey().toString()
-    let lockScript = Script.fromASM(`${pubkey} OP_CHECKSIG OP_FALSE OP_IF ${inner} OP_ENDIF`)
-    let lockScriptHash = Hash.ripemd160(Hash.sha256(lockScript.toBuffer()))
 
-    let p2shOutputScript = Script.fromASM(`OP_HASH160 ${lockScriptHash.toString('hex')} OP_EQUAL`)
-    let p2shOutput = new Transaction.Output({ script: p2shOutputScript, satoshis: 100000 })
+    let inscription = new Script()
+    inscription.chunks.push(bufferToChunk('ord'))
+    inscription.chunks.push(numberToChunk(1))
+    inscription.chunks.push(bufferToChunk(contentType))
+    inscription.chunks.push(numberToChunk(0))
+    inscription.chunks.push(bufferToChunk(data))
+
+
+    let lock = new Script()
+    lock.chunks.push(bufferToChunk(publicKey.toBuffer()))
+    lock.chunks.push(opcodeToChunk(Opcode.OP_CHECKSIGVERIFY))
+    lock.chunks.push(opcodeToChunk(Opcode.OP_DROP))
+    lock.chunks.push(opcodeToChunk(Opcode.OP_DROP))
+    lock.chunks.push(opcodeToChunk(Opcode.OP_DROP))
+    lock.chunks.push(opcodeToChunk(Opcode.OP_DROP))
+    lock.chunks.push(opcodeToChunk(Opcode.OP_DROP))
+    lock.chunks.push(opcodeToChunk(Opcode.OP_TRUE))
+
+
+    let lockhash = Hash.ripemd160(Hash.sha256(lock.toBuffer()))
+
+    let p2sh = new Script()
+    p2sh.chunks.push(opcodeToChunk(Opcode.OP_HASH160))
+    p2sh.chunks.push(bufferToChunk(lockhash))
+    p2sh.chunks.push(opcodeToChunk(Opcode.OP_EQUAL))
+
+
+    let p2shOutput = new Transaction.Output({
+        script: p2sh,
+        satoshis: 100000
+    })
 
 
     let tx1 = new Transaction()
     tx1.addOutput(p2shOutput)
     fund(wallet, tx1)
     updateWallet(wallet, tx1)
-
     txs.push(tx1)
 
 
-    let p2shInput = new Transaction.Input({ prevTxId: tx1.hash, outputIndex: 0, output: tx1.outputs[0], script: '' })
+    let p2shInput = new Transaction.Input({
+        prevTxId: tx1.hash,
+        outputIndex: 0,
+        output: tx1.outputs[0],
+        script: ''
+    })
+
     p2shInput.clearSignatures = () => {}
     p2shInput.getSignatures = () => {}
 
@@ -228,17 +282,20 @@ function inscribeOrd(wallet, address, contentType, data) {
     tx2.addInput(p2shInput)
     tx2.to(address, 100000)
     fund(wallet, tx2)
+    txs.push(tx2)
 
 
-    let signature = Transaction.sighash.sign(tx2, new PrivateKey(wallet.privkey), Signature.SIGHASH_ALL, 0, lockScript)
+    let signature = Transaction.sighash.sign(tx2, privateKey, Signature.SIGHASH_ALL, 0, lock)
     let txsignature = Buffer.concat([signature.toBuffer(), Buffer.from([Signature.SIGHASH_ALL])])
-    let p2shInputScript = new Script().add(txsignature).add(lockScript.toBuffer())
-    tx2.inputs[0].setScript(p2shInputScript)
+
+    let unlock = new Script()
+    unlock.chunks = unlock.chunks.concat(inscription.chunks)
+    unlock.chunks.push(bufferToChunk(txsignature))
+    unlock.chunks.push(bufferToChunk(lock.toBuffer()))
+    tx2.inputs[0].setScript(unlock)
+
 
     updateWallet(wallet, tx2)
-
-
-    txs.push(tx2)
 
 
     return txs
@@ -252,22 +309,6 @@ const MAX_PAYLOAD_LEN = MAX_SCRIPT_ELEMENT_SIZE - 34 - 5;
 function inscribeOrdChain(wallet, address, contentType, data) {
     let txs = []
 
-
-    const bufferToChunk = b => {
-        return {
-            buf: b.length ? b : undefined,
-            len: b.length,
-            opcodenum: b.length <= 75 ? b.length : b.length <= 255 ? 76 : 77
-        }
-    }
-
-    const numberToChunk = n => {
-        return {
-            buf: n <= 16 ? undefined : n < 256 ? Buffer.from([n]) : Buffer.from([n / 256, n % 256]),
-            len: n <= 16 ? 0 : n <= 255 ? 1 : 2,
-            opcodenum: n == 0 ? 0 : n <= 16 ? 80 + n : n <= 255 ? 1 : 2
-        }
-    }
 
 
     let dataChunks = []
