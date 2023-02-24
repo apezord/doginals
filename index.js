@@ -185,7 +185,19 @@ async function mint() {
 
 		let tx = txs[i]
 
-		await broadcast(tx)
+		while (true) {
+			try {
+				await broadcast(tx)
+				break
+			} catch (e) {
+				if (e.response.data.error.message.includes('too-long-mempool-chain')) {
+					console.warn('retrying, too-long-mempool-chain')
+					await new Promise(resolve => setTimeout(resolve, 1000));
+				} else {
+					throw e
+				}
+			}
+		}
 	}
 
 	console.log(txs[txs.length - 1].hash)
