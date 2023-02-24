@@ -219,6 +219,7 @@ function opcodeToChunk(op) {
 
 
 const MAX_CHUNK_LEN = 240
+const MAX_PAYLOAD_LEN = 1500
 
 
 function inscribe(wallet, address, contentType, data) {
@@ -247,65 +248,105 @@ function inscribe(wallet, address, contentType, data) {
     })
 
 
-    let lock = new Script()
-    lock.chunks.push(bufferToChunk(publicKey.toBuffer()))
-    lock.chunks.push(opcodeToChunk(Opcode.OP_CHECKSIGVERIFY))
-    inscription.chunks.forEach(() => {
-        lock.chunks.push(opcodeToChunk(Opcode.OP_DROP))
-    })
-    lock.chunks.push(opcodeToChunk(Opcode.OP_TRUE))
+
+    let p2shInput
+    let lastLock
+    let lastPartial
+
+    while (inscription.chunks.length) {
+        let partial = new Script()
+
+        if (txs.length == 0) {
+            partial.chunks.push(inscription.chunks.shift())
+        }
+
+        while (partial.toBuffer().length <= MAX_PAYLOAD_LEN && inscription.chunks.length) {
+            partial.chunks.push(inscription.chunks.shift())
+            partial.chunks.push(inscription.chunks.shift())
+        }
+
+        if (partial.toBuffer().length > MAX_PAYLOAD_LEN) {
+            inscription.chunks.unshift(partial.chunks.pop())
+            inscription.chunks.unshift(partial.chunks.pop())
+        }
 
 
-    let lockhash = Hash.ripemd160(Hash.sha256(lock.toBuffer()))
-
-    let p2sh = new Script()
-    p2sh.chunks.push(opcodeToChunk(Opcode.OP_HASH160))
-    p2sh.chunks.push(bufferToChunk(lockhash))
-    p2sh.chunks.push(opcodeToChunk(Opcode.OP_EQUAL))
-
-
-    let p2shOutput = new Transaction.Output({
-        script: p2sh,
-        satoshis: 100000
-    })
+        let lock = new Script()
+        lock.chunks.push(bufferToChunk(publicKey.toBuffer()))
+        lock.chunks.push(opcodeToChunk(Opcode.OP_CHECKSIGVERIFY))
+        partial.chunks.forEach(() => {
+            lock.chunks.push(opcodeToChunk(Opcode.OP_DROP))
+        })
+        lock.chunks.push(opcodeToChunk(Opcode.OP_TRUE))
 
 
-    let tx1 = new Transaction()
-    tx1.addOutput(p2shOutput)
-    fund(wallet, tx1)
-    updateWallet(wallet, tx1)
-    txs.push(tx1)
+        let lockhash = Hash.ripemd160(Hash.sha256(lock.toBuffer()))
 
 
-    let p2shInput = new Transaction.Input({
-        prevTxId: tx1.hash,
-        outputIndex: 0,
-        output: tx1.outputs[0],
-        script: ''
-    })
-
-    p2shInput.clearSignatures = () => {}
-    p2shInput.getSignatures = () => {}
+        let p2sh = new Script()
+        p2sh.chunks.push(opcodeToChunk(Opcode.OP_HASH160))
+        p2sh.chunks.push(bufferToChunk(lockhash))
+        p2sh.chunks.push(opcodeToChunk(Opcode.OP_EQUAL))
 
 
-    let tx2 = new Transaction()
-    tx2.addInput(p2shInput)
-    tx2.to(address, 100000)
-    fund(wallet, tx2)
-    txs.push(tx2)
+        let p2shOutput = new Transaction.Output({
+            script: p2sh,
+            satoshis: 100000
+        })
 
 
-    let signature = Transaction.sighash.sign(tx2, privateKey, Signature.SIGHASH_ALL, 0, lock)
+        let tx = new Transaction()
+        if (p2shInput) tx.addInput(p2shInput)
+        tx.addOutput(p2shOutput)
+        fund(wallet, tx)
+
+        if (p2shInput) {
+            let signature = Transaction.sighash.sign(tx, privateKey, Signature.SIGHASH_ALL, 0, lastLock)
+            let txsignature = Buffer.concat([signature.toBuffer(), Buffer.from([Signature.SIGHASH_ALL])])
+
+            let unlock = new Script()
+            unlock.chunks = unlock.chunks.concat(lastPartial.chunks)
+            unlock.chunks.push(bufferToChunk(txsignature))
+            unlock.chunks.push(bufferToChunk(lastLock.toBuffer()))
+            tx.inputs[0].setScript(unlock)
+        }
+
+        updateWallet(wallet, tx)
+        txs.push(tx)
+
+        p2shInput = new Transaction.Input({
+            prevTxId: tx.hash,
+            outputIndex: 0,
+            output: tx.outputs[0],
+            script: ''
+        })
+
+        p2shInput.clearSignatures = () => {}
+        p2shInput.getSignatures = () => {}
+
+
+        lastLock = lock
+        lastPartial = partial
+
+    }
+
+
+    let tx = new Transaction()
+    tx.addInput(p2shInput)
+    tx.to(address, 100000)
+    fund(wallet, tx)
+
+    let signature = Transaction.sighash.sign(tx, privateKey, Signature.SIGHASH_ALL, 0, lastLock)
     let txsignature = Buffer.concat([signature.toBuffer(), Buffer.from([Signature.SIGHASH_ALL])])
 
     let unlock = new Script()
-    unlock.chunks = unlock.chunks.concat(inscription.chunks)
+    unlock.chunks = unlock.chunks.concat(lastPartial.chunks)
     unlock.chunks.push(bufferToChunk(txsignature))
-    unlock.chunks.push(bufferToChunk(lock.toBuffer()))
-    tx2.inputs[0].setScript(unlock)
+    unlock.chunks.push(bufferToChunk(lastLock.toBuffer()))
+    tx.inputs[0].setScript(unlock)
 
-
-    updateWallet(wallet, tx2)
+    updateWallet(wallet, tx)
+    txs.push(tx)
 
 
     return txs
