@@ -55,7 +55,7 @@ Example:
 
 ```
 node . mint DSV12KPb8m5b6YtfmqY89K6YqvdVwMYDPn "text/plain;charset=utf8" 576f6f6621 
-node . mint DSV12KPb8m5b6YtfmqY89K6YqvdVwMYDPn "image/png" dog.jpeg
+node . mint DSV12KPb8m5b6YtfmqY89K6YqvdVwMYDPn dog.jpeg
 ```
 
 ## Protocol

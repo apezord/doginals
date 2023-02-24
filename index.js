@@ -2,6 +2,7 @@ const dogecore = require('bitcore-lib-doge')
 const axios = require('axios')
 const fs = require('fs')
 const dotenv = require('dotenv')
+const mime = require('mime-types')
 const { PrivateKey, Address, Transaction, Script } = dogecore
 const { Hash, Signature } = dogecore.crypto
 
@@ -149,15 +150,20 @@ const MAX_SCRIPT_ELEMENT_SIZE = 520
 
 async function mint() {
 	const argAddress = process.argv[3]
-	const argContentType = process.argv[4]
-	const argHexDataOrFilename = process.argv[5]
+	const argContentTypeOrFilename = process.argv[4]
+	const argHexData = process.argv[5]
 
+	let address = new Address(argAddress)
+	let contentType
+	let data
 
-	const address = new Address(argAddress)
-	const contentType = argContentType
-	const data = fs.existsSync(argHexDataOrFilename) ?
-		fs.readFileSync(argHexDataOrFilename) :
-		Buffer.from(argHexDataOrFilename, 'hex')
+	if (fs.existsSync(argContentTypeOrFilename)) {
+		contentType = mime.contentType(mime.lookup(argContentTypeOrFilename))
+		data = fs.readFileSync(argContentTypeOrFilename)
+	} else {
+		contentType = argContentTypeOrFilename
+		data = Buffer.from(argHexData, 'hex')
+	}
 
 
 	if (contentType.length > MAX_SCRIPT_ELEMENT_SIZE) {
