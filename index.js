@@ -169,9 +169,13 @@ async function mint() {
         data = fs.readFileSync(argContentTypeOrFilename)
     } else {
         contentType = argContentTypeOrFilename
+        if (!/^[a-fA-F0-9]*$/.test(argHexData)) throw new Error('data must be hex')
         data = Buffer.from(argHexData, 'hex')
     }
 
+    if (data.length == 0) {
+        throw new Error('no data to mint')
+    }
 
     if (contentType.length > MAX_SCRIPT_ELEMENT_SIZE) {
         throw new Error('content type too long')
