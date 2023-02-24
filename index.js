@@ -178,20 +178,15 @@ async function mint() {
     let wallet = JSON.parse(fs.readFileSync('.wallet.json'))
 
 
-    if (data.length <= MAX_SCRIPT_ELEMENT_SIZE) {
-        txs = inscribeOrd(wallet, address, contentType, data)
-    } else {
-        txs = inscribeOrdChain(wallet, address, contentType, data)
-    }
+    let txs = inscribeOrd(wallet, address, contentType, data)
 
 
     for (let i = 0; i < txs.length; i++) {
-        console.log(`broadcasting tx ${i+1} of ${txs.length}`)
+        console.log(`broadcasting tx ${i + 1} of ${txs.length}`)
 
-        let tx = txs[i]
-
-        await broadcast(tx)
+        await broadcast(txs[i])
     }
+
 
     console.log(txs[txs.length - 1].hash)
 }
@@ -219,6 +214,9 @@ function opcodeToChunk(op) {
 }
 
 
+const MAX_CHUNK_LEN = 240
+
+
 function inscribeOrd(wallet, address, contentType, data) {
     let txs = []
 
@@ -227,22 +225,30 @@ function inscribeOrd(wallet, address, contentType, data) {
     let publicKey = privateKey.toPublicKey()
 
 
+    let parts = []
+    while (data.length) {
+        let part = data.slice(0, Math.min(MAX_CHUNK_LEN, data.length))
+        data = data.slice(part.length)
+        parts.push(part)
+    }
+
+
     let inscription = new Script()
     inscription.chunks.push(bufferToChunk('ord'))
-    inscription.chunks.push(numberToChunk(1))
+    inscription.chunks.push(numberToChunk(parts.length))
     inscription.chunks.push(bufferToChunk(contentType))
-    inscription.chunks.push(numberToChunk(0))
-    inscription.chunks.push(bufferToChunk(data))
+    parts.forEach((part, n) => {
+        inscription.chunks.push(numberToChunk(parts.length - n - 1))
+        inscription.chunks.push(bufferToChunk(part))
+    })
 
 
     let lock = new Script()
     lock.chunks.push(bufferToChunk(publicKey.toBuffer()))
     lock.chunks.push(opcodeToChunk(Opcode.OP_CHECKSIGVERIFY))
-    lock.chunks.push(opcodeToChunk(Opcode.OP_DROP))
-    lock.chunks.push(opcodeToChunk(Opcode.OP_DROP))
-    lock.chunks.push(opcodeToChunk(Opcode.OP_DROP))
-    lock.chunks.push(opcodeToChunk(Opcode.OP_DROP))
-    lock.chunks.push(opcodeToChunk(Opcode.OP_DROP))
+    inscription.chunks.forEach(() => {
+        lock.chunks.push(opcodeToChunk(Opcode.OP_DROP))
+    })
     lock.chunks.push(opcodeToChunk(Opcode.OP_TRUE))
 
 
@@ -303,7 +309,6 @@ function inscribeOrd(wallet, address, contentType, data) {
 
 
 
-const MAX_CHUNK_LEN = 255;
 const MAX_PAYLOAD_LEN = MAX_SCRIPT_ELEMENT_SIZE - 34 - 5;
 
 function inscribeOrdChain(wallet, address, contentType, data) {
