@@ -192,7 +192,7 @@ async function mint() {
         await broadcast(txs[i])
     }
 
-    console.log(txs[txs.length - 1].hash)
+    console.log('inscription txid:', txs[1].hash)
 }
 
 
