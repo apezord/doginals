@@ -19,6 +19,8 @@ if (process.env.FEE_PER_KB) {
     Transaction.FEE_PER_KB = 100000000
 }
 
+const WALLET_PATH = process.env.WALLET || '.wallet.json'
+
 
 async function main() {
     let cmd = process.argv[2]
@@ -55,12 +57,12 @@ async function wallet() {
 
 
 function walletNew() {
-    if (!fs.existsSync('.wallet.json')) {
+    if (!fs.existsSync(WALLET_PATH)) {
         const privateKey = new PrivateKey()
         const privkey = privateKey.toWIF()
         const address = privateKey.toAddress().toString()
         const json = { privkey, address, utxos: [] }
-        fs.writeFileSync('.wallet.json', JSON.stringify(json, 0, 2))
+        fs.writeFileSync(WALLET_PATH, JSON.stringify(json, 0, 2))
         console.log('address', address)
     } else {
         throw new Error('wallet already exists')
@@ -71,7 +73,7 @@ function walletNew() {
 async function walletSync() {
     if (process.env.TESTNET == 'true') throw new Error('no testnet api')
 
-    let wallet = JSON.parse(fs.readFileSync('.wallet.json'))
+    let wallet = JSON.parse(fs.readFileSync(WALLET_PATH))
 
     console.log('syncing utxos with dogechain.info api')
 
@@ -85,7 +87,7 @@ async function walletSync() {
         }
     })
 
-    fs.writeFileSync('.wallet.json', JSON.stringify(wallet, 0, 2))
+    fs.writeFileSync(WALLET_PATH, JSON.stringify(wallet, 0, 2))
 
     let balance = wallet.utxos.reduce((acc, curr) => acc + curr.satoshis, 0)
 
@@ -94,7 +96,7 @@ async function walletSync() {
 
 
 function walletBalance() {
-    let wallet = JSON.parse(fs.readFileSync('.wallet.json'))
+    let wallet = JSON.parse(fs.readFileSync(WALLET_PATH))
 
     let balance = wallet.utxos.reduce((acc, curr) => acc + curr.satoshis, 0)
 
@@ -106,7 +108,7 @@ async function walletSend() {
     const argAddress = process.argv[4]
     const argAmount = process.argv[5]
 
-    let wallet = JSON.parse(fs.readFileSync('.wallet.json'))
+    let wallet = JSON.parse(fs.readFileSync(WALLET_PATH))
 
     let balance = wallet.utxos.reduce((acc, curr) => acc + curr.satoshis, 0)
     if (balance == 0) throw new Error('no funds to send')
@@ -133,7 +135,7 @@ async function walletSend() {
 async function walletSplit() {
     let splits = parseInt(process.argv[4])
 
-    let wallet = JSON.parse(fs.readFileSync('.wallet.json'))
+    let wallet = JSON.parse(fs.readFileSync(WALLET_PATH))
 
     let balance = wallet.utxos.reduce((acc, curr) => acc + curr.satoshis, 0)
     if (balance == 0) throw new Error('no funds to split')
@@ -182,7 +184,7 @@ async function mint() {
     }
 
 
-    let wallet = JSON.parse(fs.readFileSync('.wallet.json'))
+    let wallet = JSON.parse(fs.readFileSync(WALLET_PATH))
 
     let txs = inscribe(wallet, address, contentType, data)
 
@@ -430,11 +432,11 @@ async function broadcast(tx) {
         }
     }
 
-    let wallet = JSON.parse(fs.readFileSync('.wallet.json'))
+    let wallet = JSON.parse(fs.readFileSync(WALLET_PATH))
 
     updateWallet(wallet, tx)
 
-    fs.writeFileSync('.wallet.json', JSON.stringify(wallet, 0, 2))
+    fs.writeFileSync(WALLET_PATH, JSON.stringify(wallet, 0, 2))
 }
 
 
