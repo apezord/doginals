@@ -456,7 +456,7 @@ async function extract(txid) {
 
     let prefix = chunks.shift().buf.toString('utf8')
     if (prefix != 'ord') {
-        res.send('not an doginal')
+        throw new Error('not a doginal')
     }
 
     let pieces = chunkToNumber(chunks.shift())
