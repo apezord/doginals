@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 const dogecore = require('bitcore-lib-doge')
 const axios = require('axios')
 const fs = require('fs')
@@ -32,7 +34,7 @@ async function main() {
     } else if (cmd == 'server') {
         await server()
     } else {
-        throw new Error('unknown command')
+        throw new Error(`unknown command: ${cmd}`)
     }
 }
 
@@ -51,7 +53,7 @@ async function wallet() {
     } else if (subcmd == 'split') {
         await walletSplit()
     } else {
-        throw new Error('unknown subcommand')
+        throw new Error(`unknown subcommand: ${subcmd}`)
     }
 }
 
