@@ -1,6 +1,6 @@
 # Doginals
 
-A protocol and minter for inscriptions on Dogecoin. 
+A minter and protocol for inscriptions on Dogecoin. 
 
 ## Setup
 
