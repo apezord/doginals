@@ -421,7 +421,7 @@ async function broadcast(tx) {
             break
         } catch (e) {
             let msg = e.response && e.response.data && e.response.data.error && e.response.data.error.message
-            if (msg.includes('too-long-mempool-chain')) {
+            if (msg && msg.includes('too-long-mempool-chain')) {
                 console.warn('retrying, too-long-mempool-chain')
                 await new Promise(resolve => setTimeout(resolve, 1000));
             } else {
