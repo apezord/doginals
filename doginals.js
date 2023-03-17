@@ -27,6 +27,13 @@ const WALLET_PATH = process.env.WALLET || '.wallet.json'
 async function main() {
     let cmd = process.argv[2]
 
+    if (fs.existsSync('pending-txs.json')) {
+        console.log('found pending-txs.json. rebroadcasting...')
+        const txs = JSON.parse(fs.readFileSync('pending-txs.json'))
+        await broadcastAll(txs.map(tx => new Transaction(tx)), false)
+        return 
+    }
+
     if (cmd == 'mint') {
         await mint()
     } else if (cmd == 'wallet') {
@@ -128,7 +135,7 @@ async function walletSend() {
         tx.sign(wallet.privkey)
     }
 
-    await broadcast(tx)
+    await broadcast(tx, true)
 
     console.log(tx.hash)
 }
@@ -150,7 +157,7 @@ async function walletSplit() {
     tx.change(wallet.address)
     tx.sign(wallet.privkey)
 
-    await broadcast(tx)
+    await broadcast(tx, true)
 
     console.log(tx.hash)
 }
@@ -190,11 +197,26 @@ async function mint() {
 
     let txs = inscribe(wallet, address, contentType, data)
 
+    await broadcastAll(txs, false)
+}
+
+async function broadcastAll(txs, retry) {
     for (let i = 0; i < txs.length; i++) {
         console.log(`broadcasting tx ${i + 1} of ${txs.length}`)
 
-        await broadcast(txs[i])
+        try {
+            throw new Error('hello')
+            await broadcast(txs[i], retry)
+        } catch (e) {
+            console.log('broadcast failed', e)
+            console.log('saving pending txs to pending-txs.json')
+            console.log('to reattempt broadcast, re-run the command')
+            fs.writeFileSync('pending-txs.json', JSON.stringify(txs.slice(i).map(tx => tx.toString())))
+            process.exit(1)
+        }
     }
+
+    fs.deleteFileSync('pending-txs.json')
 
     console.log('inscription txid:', txs[1].hash)
 }
@@ -404,7 +426,7 @@ function updateWallet(wallet, tx) {
 }
 
 
-async function broadcast(tx) {
+async function broadcast(tx, retry) {
     const body = {
         jsonrpc: "1.0",
         id: 0,
@@ -424,6 +446,7 @@ async function broadcast(tx) {
             await axios.post(process.env.NODE_RPC_URL, body, options)
             break
         } catch (e) {
+            if (!retry) throw e
             let msg = e.response && e.response.data && e.response.data.error && e.response.data.error.message
             if (msg && msg.includes('too-long-mempool-chain')) {
                 console.warn('retrying, too-long-mempool-chain')
