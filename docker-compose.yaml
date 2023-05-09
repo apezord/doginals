@@ -1,0 +1,20 @@
+version: '3.8'
+services:
+  cli:
+    image: node:18-alpine
+    env_file:
+      - .env
+    tty: true
+    restart: "no"
+    volumes:
+      - ./:/usr/src/app
+    working_dir: /usr/src/app
+  server:
+    image: node:18-alpine
+    env_file:
+      - .env
+    restart: "no"
+    volumes:
+      - ./:/usr/src/app
+    working_dir: /usr/src/app
+    command: ["node", ".", "server"]
